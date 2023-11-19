@@ -21,21 +21,45 @@ async function AddPost(req, res) {
         description
     }
 
+    if (!uploadImage || !title || !description) {
+        let response = ResponseTemplate(null, 'bad request', null, 400)
+        return res.status(400).json(response)
+    }
+
     try {
-        await prisma.feeds.create({
-            data: {
-                ...payload
+
+        const checkPost = await prisma.feeds.findFirst({
+            where: {
+                OR: [
+                    {
+                        title: title,
+                    },
+                    {
+                        description: description,
+                    },
+                ]
             }
         })
 
-        const payloadData = {
-            image_url: uploadImage.url,
-            title,
-            description
-        }
+        if (checkPost) {
+            let response = ResponseTemplate(null, 'title or description already used', null, 400)
+            return res.status(400).json(response)
+        } else {
+            await prisma.feeds.create({
+                data: {
+                    ...payload
+                }
+            })
 
-        let response = ResponseTemplate(payloadData, 'succes', null, 200)
-        return res.status(200).json(response)
+            const payloadData = {
+                image_url: uploadImage.url,
+                title,
+                description
+            }
+
+            let response = ResponseTemplate(payloadData, 'success', null, 200)
+            return res.status(200).json(response)
+        }
     } catch (error) {
         console.log(error)
         let response = ResponseTemplate(null, 'internal server error', error, 500)
@@ -46,9 +70,12 @@ async function AddPost(req, res) {
 async function DeletePost(req, res) {
     const { id } = req.params
     try {
-        await prisma.feeds.delete({
+        await prisma.feeds.update({
             where: {
                 id
+            },
+            data: {
+                deletedAt: new Date()
             }
         })
         let response = ResponseTemplate(null, 'success', null, 200)
@@ -64,37 +91,49 @@ async function EditPost(req, res) {
     const { title, description } = req.body
     const { id } = req.params
 
-    const payload = {}
+    const payload = {
+        title,
+        description
+    }
 
-    if (!title && !description) {
+    if (!title || !description) {
         let response = ResponseTemplate(null, 'bad request', null, 400)
         return res.status(400).json(response)
     }
 
-    if (title) {
-        payload.title = title
-    }
-
-    if (description) {
-        payload.description = description
-    }
-
     try {
-        const updateImage = await prisma.feeds.update({
-            where: { id },
-            data: { ...payload },
-            select:{
-                id:true,
-                title:true,
-                image_url:true,
-                description:true,
-                updatedAt:true,
-
+        const checkEdit = await prisma.feeds.findFirst({
+            where: {
+                OR: [
+                    {
+                        title: title,
+                    },
+                    {
+                        description: description,
+                    },
+                ]
             }
         })
+        if (checkEdit) {
+            let response = ResponseTemplate(null, 'title or description already used', null, 400)
+            return res.status(400).json(response)
+        } else {
+            const updateImage = await prisma.feeds.update({
+                where: { id },
+                data: { ...payload },
+                select: {
+                    id: true,
+                    title: true,
+                    image_url: true,
+                    description: true,
+                    updatedAt: true,
 
-        let response = ResponseTemplate(updateImage, 'success', null, 200)
-        return res.status(200).json(response)
+                }
+            })
+
+            let response = ResponseTemplate(updateImage, 'success', null, 200)
+            return res.status(200).json(response)
+        }
     } catch (error) {
         console.log(error)
         let response = ResponseTemplate(null, 'internal server error', error, 500)
@@ -134,12 +173,15 @@ async function ListPost(req, res) {
 
         const allPost = await prisma.feeds.findMany({
             where: payload,
-            select:{
-                id:true,
-                image_url:true,
-                title:true,
-                description:true
-            },  
+            select: {
+                id: true,
+                image_url: true,
+                title: true,
+                description: true,
+                createdAt: true,
+                updatedAt: true,
+                deletedAt: true
+            },
             orderBy: {
                 createdAt: 'asc'
             },

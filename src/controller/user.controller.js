@@ -6,39 +6,54 @@ const prisma = new PrismaClient
 
 async function ViewProfile(req, res) {
 
-    const  {username}  = req.params
-
-    console.log(req.params)
+    const { username } = req.params
 
     try {
         const checkUser = await prisma.users.findUnique({
             where: {
-                username: username
+                username: username,
             }
         })
-        
+
         if (!checkUser) {
-            let response = ResponseTemplate(null, 'username user not found', null, 404)
-            res.status(404).json(response)
-            return
-        } else {
-            const users = await prisma.users.findUnique({
-                select: {
-                    id: true,
-                    username: true,
-                    photo_profile: true,
-                    createdAt:true,
-                },
-                where: {
-                    username:username
-                }
+            res.status(404).json({
+                message: 'username not found',
+                status: 404
             })
-            let response = ResponseTemplate(users, 'success', null, 200)
-            res.status(200).json(response)
             return
         }
+
+        if (checkUser.deletedAt != null) {
+            res.status(404).json({
+                data: { deletedAt: checkUser.deletedAt },
+                message: 'user has been deleted',
+                status: 404,
+            })
+            return
+        }
+
+        if (!users) {
+            res.status(404).json({
+                message: 'username not found',
+                status: 404
+            })
+            return
+        }
+
+        const users = await prisma.users.findUnique({
+            select: {
+                username: true,
+                photo_profile: true,
+                createdAt: true,
+            },
+            where: {
+                username: username,
+            }
+        })
+        let response = ResponseTemplate(users, 'success', null, 200)
+        res.status(200).json(response)
+        return
     } catch (error) {
-        console.log(error)
         let response = ResponseTemplate(null, 'internal server error', error, 500)
         res.status(500).json(response)
         return
@@ -49,25 +64,24 @@ async function ChangePhoto(req, res) {
 
     const fileString = req.file.buffer.toString('base64')
     const uploadImage = await imagekit.upload({
-            fileName: req.file.originalname,
-            file: fileString
-        })
+        fileName: req.file.originalname,
+        file: fileString
+    })
 
     try {
         const ChangePhoto = await prisma.users.update({
             where: { username: req.users.username },
             data: { photo_profile: uploadImage.url },
-            select:{
-                id:true,
-                username:true,
-                photo_profile:true,
-                updatedAt:true,
+            select: {
+                id: true,
+                username: true,
+                photo_profile: true,
+                updatedAt: true,
             }
         })
         let response = ResponseTemplate(ChangePhoto, 'success', null, 200)
         return res.status(200).json(response)
     } catch (error) {
-        console.log(error)
         let response = ResponseTemplate(null, 'internal server error', error, 500)
         return res.status(500).json(response)
     }
@@ -102,13 +116,13 @@ async function ListUser(req, res) {
 
         const users = await prisma.users.findMany({
             where: payload,
-            select:{
-                id:true,
-                username:true,
-                photo_profile:true,
-                createdAt:true,
-                updatedAt:true,
-                deletedAt:true
+            select: {
+                id: true,
+                username: true,
+                photo_profile: true,
+                createdAt: true,
+                updatedAt: true,
+                deletedAt: true
             },
             orderBy: {
                 createdAt: 'asc'
@@ -121,18 +135,54 @@ async function ListUser(req, res) {
 
         let pagination = Pagination(currentPage, totalCount, totalPages)
         let response = ResponseTemplate(users, 'success', null, 200)
-        res.status(200).json({ data: response, pagination })
-        return
+        return res.status(200).json({ data: response, pagination })
+        
     } catch (error) {
         let response = ResponseTemplate(null, 'internal server error', error, 500)
-        res.status(500).json(response)
-        return
+        return res.status(500).json(response)
     }
 }
 
+async function DeleteUser(req, res) {
+
+    const { id } = req.params
+
+    try {
+        const checkUser = await prisma.users.findUnique({
+            where: {
+                id,
+                deletedAt: null
+            }
+        })
+
+        if (!checkUser) {
+            res.status(404).json({
+                message: 'user not found',
+                status: 404
+            })
+            return
+        } else {
+            await prisma.users.update({
+                where: {
+                    id
+                },
+                data: {
+                    deletedAt: new Date(),
+                }
+            })
+
+            let response = ResponseTemplate(null, 'success', null, 200)
+            return res.status(200).json(response)
+        }
+    } catch (error) {
+        let response = ResponseTemplate(null, 'internal server error', error, 500)
+        return res.status(500).json(response)
+    }
+}
 
 module.exports = {
     ViewProfile,
     ChangePhoto,
     ListUser,
+    DeleteUser
 }
